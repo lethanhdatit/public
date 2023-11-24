@@ -1,0 +1,1687 @@
+ public async Task CreateListAsync_InvalidFile(byte caseNumber)
+        {
+            // Arrange
+            var instance = CreateTodoServiceV2HasMockMapper();
+            var SPOFileId = Guid.NewGuid();
+            var engagementId = Guid.NewGuid();
+            var url1 = "https://url1/" + engagementId.ToString();
+            var url2 = "https://url2/" + engagementId.ToString();
+
+            List<FileDetails> fileDetails = null;
+
+            if(caseNumber == 1)
+            {
+                fileDetails = new List<FileDetails>
+                {
+                    new FileDetails
+                    {
+                        Id = SPOFileId.ToString(),
+                        Url = url1,
+                        Name = "file2",
+                    }
+                };
+            }
+            else if (caseNumber == 2)
+            {
+                fileDetails = new List<FileDetails>
+                {
+                    new FileDetails
+                    {
+                        Id = SPOFileId.ToString(),
+                        Url = url2,
+                        Name = "file1",
+                    }
+                };
+            }
+            else if (caseNumber == 3)
+            {
+                fileDetails = new List<FileDetails>
+                {
+                    new FileDetails
+                    {
+                        Id = SPOFileId.ToString(),
+                        Url = null,
+                        Name = "file1",
+                    }
+                };
+
+                SPOFileId = Guid.NewGuid();
+            }
+            else if (caseNumber == 4)
+            {
+                fileDetails = new List<FileDetails>
+                {
+                    new FileDetails
+                    {
+                        Id = SPOFileId.ToString(),
+                        Url = url2,
+                        Name = null,
+                    }
+                };
+
+                SPOFileId = Guid.NewGuid();
+            }
+
+            _spoService.Setup(s => s.ValidateFileInfosAsync(It.IsAny<Guid?>(), It.IsAny<string>(), It.IsAny<List<FileDetails>>(), It.IsAny<string>()))
+                       .ReturnsAsync(JsonConvert.SerializeObject(fileDetails));
+
+            _documentServiceMock.Setup(s => s.ValidateFilesAsync(It.IsAny<OfficeFilesRequest>()));
+
+            var request = new CreateListTodoRequest
+            {
+                Payload = new CreateListTodoPayload
+                {
+                    EngagementID = engagementId,
+                    TodoFilesRequest = new List<TodoFileRequest>
+                    {
+                        new TodoFileRequest
+                        {
+                            TodoOfficeFileRequest = new TodoOfficeFileRequest
+                            {
+                                SPOFileId = SPOFileId,
+                                FileName = "file1",
+                                Url = url1
+                            }
+                        }
+                    },
+                    WpTestType = caseNumber == 0 ? TodoWpTestTypeEnum.ANZ_ASPECT_PERFORMANCE.ToDescription() : TodoWpTestTypeEnum.OFFICEFILE_WORKINGPAPER.ToDescription()
+                }
+            };
+
+            // Act
+            var result = await instance.CreateListAsync(request);
+
+            // Assert
+            Assert.Equal(StatusCode.INVALID_FILE, result.status.code);
+        }
+
+        [Fact]
+        public async Task CreateListAsync_Success_ListTodoData()
+        {
+            // Arrange
+            var instance = CreateTodoServiceV2HasMockMapper();
+            var attachmentFileId = Guid.NewGuid();
+            var SPOFileId = Guid.NewGuid();
+            var RefFileId = Guid.NewGuid();
+            var currentUserID = Guid.NewGuid();
+            var engagementId = Guid.NewGuid();
+            var engagementStructureParentId = Guid.NewGuid();
+            var url1 = "https://url1/" + engagementId.ToString();
+
+            List<FileDetails> fileDetails = new List<FileDetails>
+                {
+                    new FileDetails
+                    {
+                        Id = SPOFileId.ToString(),
+                        Url = url1,
+                        Name = "file1",
+                    }
+                };
+
+            _spoService.Setup(s => s.ValidateFileInfosAsync(It.IsAny<Guid?>(), It.IsAny<string>(), It.IsAny<List<FileDetails>>(), It.IsAny<string>()))
+                       .ReturnsAsync(JsonConvert.SerializeObject(fileDetails));
+
+            _documentServiceMock.Setup(s => s.ValidateFilesAsync(It.IsAny<OfficeFilesRequest>()));
+
+            _mockAuvenirContext.Setup(x => x.Repository<Todo>().Update(It.IsAny<Todo>()));
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>().Update(It.IsAny<EngagementStructure>()));
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>().UpdateRange(It.IsAny<List<EngagementStructure>>()));
+            _mockAuvenirContext.Setup(x => x.Repository<File>().UpdateRange(It.IsAny<List<File>>()));
+            _mockAuvenirContext.Setup(x => x.Repository<TodoOfficeFile>().AddRangeAsync(It.IsAny<List<TodoOfficeFile>>(), It.IsAny<CancellationToken>()));
+            _mockAuvenirContext.Setup(x => x.Repository<File>().AddRangeAsync(It.IsAny<List<File>>(), It.IsAny<CancellationToken>()));
+            _mockAuvenirContext.Setup(x => x.Repository<AttachedFile>().AddRangeAsync(It.IsAny<List<AttachedFile>>(), It.IsAny<CancellationToken>()));
+
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>())
+                              .Returns(new List<EngagementStructure>{
+                                  new EngagementStructure
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      ParentId = engagementStructureParentId,
+                                      Status = EngagementStructureStatus.Deleted.Value(),
+                                      IsActive = false
+                                  },
+                              }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<TodoOfficeFile>())
+                             .Returns(new List<TodoOfficeFile>{
+                                  new TodoOfficeFile
+                                  {
+                                      Id = engagementStructureParentId,
+                                      TodoId = engagementStructureParentId,
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<AttachedFile>())
+                             .Returns(new List<AttachedFile>{
+                                  new AttachedFile
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EntityId = engagementStructureParentId,
+                                      FileId = engagementStructureParentId
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<File>())
+                             .Returns(new List<File>{
+                                  new File
+                                  {
+                                      Id = engagementStructureParentId,
+                                      RefFileId = SPOFileId,
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<Todo>())
+                            .Returns(new List<Todo>{
+                                  new Todo
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      WpTestType = TodoWpTestTypeEnum.OFFICEFILE_WORKINGPAPER.ToDescription(),
+                                      CreatedUser = new User(),
+                                      TodoOfficeFile = new TodoOfficeFile()
+                                  }
+                            }.AsDbSetMock().Object);
+
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.GetContext(true)).Returns(_mockAuvenirContext.Object);
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.Repository<Engagement>())
+                                                .Returns(new List<Engagement>
+                                                {
+                                                    new Engagement
+                                                    {
+                                                        Id = engagementId,
+                                                        CarryForwardFrom = Guid.NewGuid()
+                                                    }
+                                                }.AsDbSetMock().Object);
+            var id = Guid.NewGuid();
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.Repository<EngagementStructure>())
+                                                .Returns(new List<EngagementStructure>
+                                                {
+                                                    new EngagementStructure
+                                                    {
+                                                        Id = id,
+                                                        EngagementId = engagementId,
+                                                        EngagementStructureBusinessProcess = new EngagementStructureBusinessProcess()
+                                                    }
+                                                }.AsDbSetMock().Object);
+
+            _mockPlanningContext.Setup(x => x.Repository<Auvenir.Common.DbContext.Planning.Models.SideNote>())
+                                                .Returns(new List<Auvenir.Common.DbContext.Planning.Models.SideNote>
+                                                {
+                                                    new Auvenir.Common.DbContext.Planning.Models.SideNote
+                                                    {
+                                                        EngagementId = engagementId,
+                                                        ObjectId = engagementStructureParentId
+                                                    }
+                                                }.AsDbSetMock().Object);
+
+            _mockPlanningContext.Setup(x => x.SaveChangesAsync());
+
+
+            var wptx = new Mock<AuvenirPlanningContext>(new DbContextOptionsBuilder<AuvenirPlanningContext>().UseInMemoryDatabase(databaseName: "AuvenirPlanningContext_UT_" + Guid.NewGuid()).Options);
+
+            wptx.Setup(x => x.Repository<AttachmentLink>())
+                         .Returns(new List<AttachmentLink>{
+                                  new AttachmentLink
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      IsActive = true,
+                                      FileId = attachmentFileId
+                                  }
+                         }.AsDbSetMock().Object);
+            wptx.Setup(x => x.Repository<AttachmentLink>().UpdateRange(It.IsAny<List<AttachmentLink>>()));
+
+            _mockUnitOfWorkGenericAuvenirWorkingPaperContext.Setup(x => x.GetContext(true)).Returns(wptx.Object);
+
+            _mockFileRepo.Setup(s => s.GetACTFilesByEngagementIdAsync(It.IsAny<Guid>()))
+                .ReturnsAsync(new List<File>
+                {
+                    new File
+                    {
+                        Id = attachmentFileId,
+                        FileName = "file1"
+                    }
+                });
+
+            _engagementTaxonomyRepo.Setup(s => s.GetDocumentSubphaseIdAsync(It.IsAny<Guid>()))
+                .ReturnsAsync(id);
+
+            _mockSendMessagesEventBus.Setup(e => e.SendMessagesAsync(It.IsAny<string>(), It.IsAny<string>(),
+                    It.IsAny<string>(), It.IsAny<ServiceBusMessageIntegrityCheck>()))
+            .Returns(Task.CompletedTask);
+
+            _mockMapper.Setup(x => x.Map<ViewModel.Responses.Todo.TodoWithOverviewViewModel>(It.IsAny<Todo>())).Returns(new TodoWithOverviewViewModel
+            {
+                id = Guid.NewGuid()
+            });
+
+            var request = new CreateListTodoRequest
+            {
+                currentUserID = currentUserID,
+                Payload = new CreateListTodoPayload
+                {
+                    EngagementStructureParentId = engagementStructureParentId,
+                    EngagementID = engagementId,
+                    TodoFilesRequest = new List<TodoFileRequest>
+                    {
+                        new TodoFileRequest
+                        {
+                            TodoOfficeFileRequest = new TodoOfficeFileRequest
+                            {
+                                SPOFileId = SPOFileId,
+                                FileName = "file1",
+                                Url = url1
+                            },
+                            Name = "Name1"
+                        }
+                    },
+                    WpTestType = TodoWpTestTypeEnum.OFFICEFILE_WORKINGPAPER.ToDescription(),
+                    TodoType = TodoTypeEnum.MWP.Value(),
+                    WpPhase = ""
+                }
+            };
+
+            // Act
+            var result = await instance.CreateListAsync(request);
+
+            // Assert
+            Assert.NotNull(result);
+        }
+
+        [Fact]
+        public async Task CreateListAsync_InvalidSubphase_HasResultResponse()
+        {
+            // Arrange
+            var instance = CreateTodoServiceV2HasMockMapper();
+            var attachmentFileId = Guid.NewGuid();
+            var SPOFileId = Guid.NewGuid();
+            var RefFileId = Guid.NewGuid();
+            var currentUserID = Guid.NewGuid();
+            var engagementId = Guid.NewGuid();
+            var engagementStructureParentId = Guid.NewGuid();
+            var url1 = "https://url1/" + engagementId.ToString();
+
+            List<FileDetails> fileDetails = new List<FileDetails>
+                {
+                    new FileDetails
+                    {
+                        Id = SPOFileId.ToString(),
+                        Url = url1,
+                        Name = "file1",
+                    }
+                };
+
+            _spoService.Setup(s => s.ValidateFileInfosAsync(It.IsAny<Guid?>(), It.IsAny<string>(), It.IsAny<List<FileDetails>>(), It.IsAny<string>()))
+                       .ReturnsAsync(JsonConvert.SerializeObject(fileDetails));
+
+            _documentServiceMock.Setup(s => s.ValidateFilesAsync(It.IsAny<OfficeFilesRequest>()));
+
+            _mockAuvenirContext.Setup(x => x.Repository<Todo>().Update(It.IsAny<Todo>()));
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>().Update(It.IsAny<EngagementStructure>()));
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>().UpdateRange(It.IsAny<List<EngagementStructure>>()));
+            _mockAuvenirContext.Setup(x => x.Repository<File>().UpdateRange(It.IsAny<List<File>>()));
+            _mockAuvenirContext.Setup(x => x.Repository<TodoOfficeFile>().AddRangeAsync(It.IsAny<List<TodoOfficeFile>>(), It.IsAny<CancellationToken>()));
+            _mockAuvenirContext.Setup(x => x.Repository<File>().AddRangeAsync(It.IsAny<List<File>>(), It.IsAny<CancellationToken>()));
+            _mockAuvenirContext.Setup(x => x.Repository<AttachedFile>().AddRangeAsync(It.IsAny<List<AttachedFile>>(), It.IsAny<CancellationToken>()));
+
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>())
+                              .Returns(new List<EngagementStructure>{
+                                  new EngagementStructure
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      ParentId = engagementStructureParentId,
+                                      Status = EngagementStructureStatus.Deleted.Value(),
+                                      IsActive = false
+                                  },
+                              }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<TodoOfficeFile>())
+                             .Returns(new List<TodoOfficeFile>{
+                                  new TodoOfficeFile
+                                  {
+                                      Id = engagementStructureParentId,
+                                      TodoId = engagementStructureParentId,
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<AttachedFile>())
+                             .Returns(new List<AttachedFile>{
+                                  new AttachedFile
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EntityId = engagementStructureParentId,
+                                      FileId = engagementStructureParentId
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<File>())
+                             .Returns(new List<File>{
+                                  new File
+                                  {
+                                      Id = engagementStructureParentId,
+                                      RefFileId = SPOFileId,
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<Todo>())
+                            .Returns(new List<Todo>{
+                                  new Todo
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      WpTestType = TodoWpTestTypeEnum.OFFICEFILE_WORKINGPAPER.ToDescription(),
+                                      CreatedUser = new User(),
+                                      TodoOfficeFile = new TodoOfficeFile()
+                                  }
+                            }.AsDbSetMock().Object);
+
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.GetContext(true)).Returns(_mockAuvenirContext.Object);
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.Repository<Engagement>())
+                                                .Returns(new List<Engagement>
+                                                {
+                                                    new Engagement
+                                                    {
+                                                        Id = engagementId,
+                                                        CarryForwardFrom = Guid.NewGuid()
+                                                    }
+                                                }.AsDbSetMock().Object);
+            var id = Guid.NewGuid();
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.Repository<EngagementStructure>())
+                                                .Returns(new List<EngagementStructure>
+                                                {
+                                                    new EngagementStructure
+                                                    {
+                                                        Id = id,
+                                                        EngagementId = engagementId,
+                                                        EngagementStructureBusinessProcess = new EngagementStructureBusinessProcess()
+                                                    }
+                                                }.AsDbSetMock().Object);
+
+            _mockPlanningContext.Setup(x => x.Repository<Auvenir.Common.DbContext.Planning.Models.SideNote>())
+                                                .Returns(new List<Auvenir.Common.DbContext.Planning.Models.SideNote>
+                                                {
+                                                    new Auvenir.Common.DbContext.Planning.Models.SideNote
+                                                    {
+                                                        EngagementId = engagementId,
+                                                        ObjectId = engagementStructureParentId
+                                                    }
+                                                }.AsDbSetMock().Object);
+
+            _mockPlanningContext.Setup(x => x.SaveChangesAsync());
+
+
+            var wptx = new Mock<AuvenirPlanningContext>(new DbContextOptionsBuilder<AuvenirPlanningContext>().UseInMemoryDatabase(databaseName: "AuvenirPlanningContext_UT_" + Guid.NewGuid()).Options);
+
+            wptx.Setup(x => x.Repository<AttachmentLink>())
+                         .Returns(new List<AttachmentLink>{
+                                  new AttachmentLink
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      IsActive = true,
+                                      FileId = attachmentFileId
+                                  }
+                         }.AsDbSetMock().Object);
+            wptx.Setup(x => x.Repository<AttachmentLink>().UpdateRange(It.IsAny<List<AttachmentLink>>()));
+
+            _mockUnitOfWorkGenericAuvenirWorkingPaperContext.Setup(x => x.GetContext(true)).Returns(wptx.Object);
+
+            _mockFileRepo.Setup(s => s.GetACTFilesByEngagementIdAsync(It.IsAny<Guid>()))
+                .ReturnsAsync(new List<File>
+                {
+                    new File
+                    {
+                        Id = attachmentFileId,
+                        FileName = "file1"
+                    }
+                });
+
+            _engagementTaxonomyRepo.Setup(s => s.GetDocumentSubphaseIdAsync(It.IsAny<Guid>()))
+                .ReturnsAsync(id);
+
+            _mockSendMessagesEventBus.Setup(e => e.SendMessagesAsync(It.IsAny<string>(), It.IsAny<string>(),
+                    It.IsAny<string>(), It.IsAny<ServiceBusMessageIntegrityCheck>()))
+            .Returns(Task.CompletedTask);
+
+            _mockMapper.Setup(x => x.Map<ViewModel.Responses.Todo.TodoWithOverviewViewModel>(It.IsAny<Todo>())).Returns(new TodoWithOverviewViewModel
+            {
+                id = Guid.NewGuid()
+            });
+
+            var request = new CreateListTodoRequest
+            {
+                currentUserID = currentUserID,
+                Payload = new CreateListTodoPayload
+                {
+                    EngagementStructureParentId = engagementStructureParentId,
+                    EngagementID = engagementId,
+                    TodoFilesRequest = new List<TodoFileRequest>(),
+                    WpTestType = TodoWpTestTypeEnum.OFFICEFILE_WORKINGPAPER.ToDescription(),
+                    TodoType = TodoTypeEnum.MWP.Value(),
+                    WpPhase = ""
+                }
+            };
+
+            // Act
+            var result = await instance.CreateListAsync(request);
+
+            // Assert
+            Assert.NotNull(result);
+        }
+
+        [Fact]
+        public async Task CreateListAsync_FileNotMap_HasResultResponse()
+        {
+            // Arrange
+            var instance = CreateTodoServiceV2HasMockMapper();
+            var attachmentFileId = Guid.NewGuid();
+            var SPOFileId = Guid.NewGuid();
+            var RefFileId = Guid.NewGuid();
+            var currentUserID = Guid.NewGuid();
+            var engagementId = Guid.NewGuid();
+            var engagementStructureParentId = Guid.NewGuid();
+            var url1 = "https://url1/" + engagementId.ToString();
+
+            List<FileDetails> fileDetails = new List<FileDetails>
+                {
+                    new FileDetails
+                    {
+                        Id = SPOFileId.ToString(),
+                        Url = url1,
+                        Name = "file1",
+                    }
+                };
+
+            _spoService.Setup(s => s.ValidateFileInfosAsync(It.IsAny<Guid?>(), It.IsAny<string>(), It.IsAny<List<FileDetails>>(), It.IsAny<string>()))
+                       .ReturnsAsync(JsonConvert.SerializeObject(fileDetails));
+
+            _documentServiceMock.Setup(s => s.ValidateFilesAsync(It.IsAny<OfficeFilesRequest>()));
+
+            _mockAuvenirContext.Setup(x => x.Repository<Todo>().Update(It.IsAny<Todo>()));
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>().Update(It.IsAny<EngagementStructure>()));
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>().UpdateRange(It.IsAny<List<EngagementStructure>>()));
+            _mockAuvenirContext.Setup(x => x.Repository<File>().UpdateRange(It.IsAny<List<File>>()));
+            _mockAuvenirContext.Setup(x => x.Repository<TodoOfficeFile>().AddRangeAsync(It.IsAny<List<TodoOfficeFile>>(), It.IsAny<CancellationToken>()));
+            _mockAuvenirContext.Setup(x => x.Repository<File>().AddRangeAsync(It.IsAny<List<File>>(), It.IsAny<CancellationToken>()));
+            _mockAuvenirContext.Setup(x => x.Repository<AttachedFile>().AddRangeAsync(It.IsAny<List<AttachedFile>>(), It.IsAny<CancellationToken>()));
+
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>())
+                              .Returns(new List<EngagementStructure>{
+                                  new EngagementStructure
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      ParentId = engagementStructureParentId,
+                                      Status = EngagementStructureStatus.Deleted.Value(),
+                                      IsActive = false
+                                  },
+                              }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<TodoOfficeFile>())
+                             .Returns(new List<TodoOfficeFile>{
+                                  new TodoOfficeFile
+                                  {
+                                      Id = engagementStructureParentId,
+                                      TodoId = engagementStructureParentId,
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<AttachedFile>())
+                             .Returns(new List<AttachedFile>{
+                                  new AttachedFile
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EntityId = engagementStructureParentId,
+                                      FileId = engagementStructureParentId
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<File>())
+                             .Returns(new List<File>{
+                                  new File
+                                  {
+                                      Id = engagementStructureParentId,
+                                      RefFileId = RefFileId,
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<Todo>())
+                            .Returns(new List<Todo>{
+                                  new Todo
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      WpTestType = TodoWpTestTypeEnum.OFFICEFILE_WORKINGPAPER.ToDescription(),
+                                      CreatedUser = new User(),
+                                      TodoOfficeFile = new TodoOfficeFile()
+                                  }
+                            }.AsDbSetMock().Object);
+
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.GetContext(true)).Returns(_mockAuvenirContext.Object);
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.Repository<Engagement>())
+                                                .Returns(new List<Engagement>
+                                                {
+                                                    new Engagement
+                                                    {
+                                                        Id = engagementId,
+                                                        CarryForwardFrom = Guid.NewGuid()
+                                                    }
+                                                }.AsDbSetMock().Object);
+            var id = Guid.NewGuid();
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.Repository<EngagementStructure>())
+                                                .Returns(new List<EngagementStructure>
+                                                {
+                                                    new EngagementStructure
+                                                    {
+                                                        Id = id,
+                                                        EngagementId = engagementId,
+                                                        EngagementStructureBusinessProcess = new EngagementStructureBusinessProcess()
+                                                    }
+                                                }.AsDbSetMock().Object);
+
+            _mockPlanningContext.Setup(x => x.Repository<Auvenir.Common.DbContext.Planning.Models.SideNote>())
+                                                .Returns(new List<Auvenir.Common.DbContext.Planning.Models.SideNote>
+                                                {
+                                                    new Auvenir.Common.DbContext.Planning.Models.SideNote
+                                                    {
+                                                        EngagementId = engagementId,
+                                                        ObjectId = engagementStructureParentId
+                                                    }
+                                                }.AsDbSetMock().Object);
+
+            _mockPlanningContext.Setup(x => x.SaveChangesAsync());
+
+
+            var wptx = new Mock<AuvenirPlanningContext>(new DbContextOptionsBuilder<AuvenirPlanningContext>().UseInMemoryDatabase(databaseName: "AuvenirPlanningContext_UT_" + Guid.NewGuid()).Options);
+
+            wptx.Setup(x => x.Repository<AttachmentLink>())
+                         .Returns(new List<AttachmentLink>{
+                                  new AttachmentLink
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      IsActive = true,
+                                      FileId = attachmentFileId
+                                  }
+                         }.AsDbSetMock().Object);
+            wptx.Setup(x => x.Repository<AttachmentLink>().UpdateRange(It.IsAny<List<AttachmentLink>>()));
+
+            _mockUnitOfWorkGenericAuvenirWorkingPaperContext.Setup(x => x.GetContext(true)).Returns(wptx.Object);
+
+            _mockFileRepo.Setup(s => s.GetACTFilesByEngagementIdAsync(It.IsAny<Guid>()))
+                .ReturnsAsync(new List<File>
+                {
+                    new File
+                    {
+                        Id = attachmentFileId,
+                        FileName = "file1"
+                    }
+                });
+
+            _engagementTaxonomyRepo.Setup(s => s.GetDocumentSubphaseIdAsync(It.IsAny<Guid>()))
+                .ReturnsAsync(id);
+
+            _mockSendMessagesEventBus.Setup(e => e.SendMessagesAsync(It.IsAny<string>(), It.IsAny<string>(),
+                    It.IsAny<string>(), It.IsAny<ServiceBusMessageIntegrityCheck>()))
+            .Returns(Task.CompletedTask);
+
+            _mockMapper.Setup(x => x.Map<ViewModel.Responses.Todo.TodoWithOverviewViewModel>(It.IsAny<Todo>())).Returns(new TodoWithOverviewViewModel
+            {
+                id = Guid.NewGuid()
+            });
+
+            var request = new CreateListTodoRequest
+            {
+                currentUserID = currentUserID,
+                Payload = new CreateListTodoPayload
+                {
+                    EngagementStructureParentId = engagementStructureParentId,
+                    EngagementID = engagementId,
+                    TodoFilesRequest = new List<TodoFileRequest>
+                    {
+                        new TodoFileRequest
+                        {
+                            TodoOfficeFileRequest = new TodoOfficeFileRequest
+                            {
+                                SPOFileId = SPOFileId,
+                                FileName = "file1",
+                                Url = url1
+                            },
+                            Name = "Name1"
+                        }
+                    },
+                    WpTestType = TodoWpTestTypeEnum.OFFICEFILE_WORKINGPAPER.ToDescription(),
+                    TodoType = TodoTypeEnum.MWP.Value(),
+                    WpPhase = ""
+                }
+            };
+
+            // Act
+            var result = await instance.CreateListAsync(request);
+
+            // Assert
+            Assert.NotNull(result);
+        }
+
+        [Fact]
+        public async Task CreateListAsync_MissingMaper_HasResultResponse()
+        {
+            // Arrange
+            var instance = CreateTodoServiceV2HasMockMapper();
+            var attachmentFileId = Guid.NewGuid();
+            var SPOFileId = Guid.NewGuid();
+            var RefFileId = Guid.NewGuid();
+            var currentUserID = Guid.NewGuid();
+            var engagementId = Guid.NewGuid();
+            var engagementStructureParentId = Guid.NewGuid();
+            var url1 = "https://url1/" + engagementId.ToString();
+
+            List<FileDetails> fileDetails = new List<FileDetails>
+                {
+                    new FileDetails
+                    {
+                        Id = SPOFileId.ToString(),
+                        Url = url1,
+                        Name = "file1",
+                    }
+                };
+
+            _spoService.Setup(s => s.ValidateFileInfosAsync(It.IsAny<Guid?>(), It.IsAny<string>(), It.IsAny<List<FileDetails>>(), It.IsAny<string>()))
+                       .ReturnsAsync(JsonConvert.SerializeObject(fileDetails));
+
+            _documentServiceMock.Setup(s => s.ValidateFilesAsync(It.IsAny<OfficeFilesRequest>()));
+
+            _mockAuvenirContext.Setup(x => x.Repository<Todo>().Update(It.IsAny<Todo>()));
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>().Update(It.IsAny<EngagementStructure>()));
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>().UpdateRange(It.IsAny<List<EngagementStructure>>()));
+            _mockAuvenirContext.Setup(x => x.Repository<File>().UpdateRange(It.IsAny<List<File>>()));
+            _mockAuvenirContext.Setup(x => x.Repository<TodoOfficeFile>().AddRangeAsync(It.IsAny<List<TodoOfficeFile>>(), It.IsAny<CancellationToken>()));
+            _mockAuvenirContext.Setup(x => x.Repository<File>().AddRangeAsync(It.IsAny<List<File>>(), It.IsAny<CancellationToken>()));
+            _mockAuvenirContext.Setup(x => x.Repository<AttachedFile>().AddRangeAsync(It.IsAny<List<AttachedFile>>(), It.IsAny<CancellationToken>()));
+
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>())
+                              .Returns(new List<EngagementStructure>{
+                                  new EngagementStructure
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      ParentId = engagementStructureParentId,
+                                      Status = EngagementStructureStatus.Deleted.Value(),
+                                      IsActive = false
+                                  },
+                              }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<TodoOfficeFile>())
+                             .Returns(new List<TodoOfficeFile>{
+                                  new TodoOfficeFile
+                                  {
+                                      Id = engagementStructureParentId,
+                                      TodoId = engagementStructureParentId,
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<AttachedFile>())
+                             .Returns(new List<AttachedFile>{
+                                  new AttachedFile
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EntityId = engagementStructureParentId,
+                                      FileId = engagementStructureParentId
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<File>())
+                             .Returns(new List<File>{
+                                  new File
+                                  {
+                                      Id = engagementStructureParentId,
+                                      RefFileId = RefFileId,
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<Todo>())
+                            .Returns(new List<Todo>{
+                                  new Todo
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      WpTestType = TodoWpTestTypeEnum.OFFICEFILE_WORKINGPAPER.ToDescription(),
+                                      CreatedUser = new User(),
+                                      TodoOfficeFile = new TodoOfficeFile()
+                                  }
+                            }.AsDbSetMock().Object);
+
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.GetContext(true)).Returns(_mockAuvenirContext.Object);
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.Repository<Engagement>())
+                                                .Returns(new List<Engagement>
+                                                {
+                                                    new Engagement
+                                                    {
+                                                        Id = engagementId,
+                                                        CarryForwardFrom = Guid.NewGuid()
+                                                    }
+                                                }.AsDbSetMock().Object);
+            var id = Guid.NewGuid();
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.Repository<EngagementStructure>())
+                                                .Returns(new List<EngagementStructure>
+                                                {
+                                                    new EngagementStructure
+                                                    {
+                                                        Id = id,
+                                                        EngagementId = engagementId,
+                                                        EngagementStructureBusinessProcess = new EngagementStructureBusinessProcess()
+                                                    }
+                                                }.AsDbSetMock().Object);
+
+            _mockPlanningContext.Setup(x => x.Repository<Auvenir.Common.DbContext.Planning.Models.SideNote>())
+                                                .Returns(new List<Auvenir.Common.DbContext.Planning.Models.SideNote>
+                                                {
+                                                    new Auvenir.Common.DbContext.Planning.Models.SideNote
+                                                    {
+                                                        EngagementId = engagementId,
+                                                        ObjectId = engagementStructureParentId
+                                                    }
+                                                }.AsDbSetMock().Object);
+
+            _mockPlanningContext.Setup(x => x.SaveChangesAsync());
+
+
+            var wptx = new Mock<AuvenirPlanningContext>(new DbContextOptionsBuilder<AuvenirPlanningContext>().UseInMemoryDatabase(databaseName: "AuvenirPlanningContext_UT_" + Guid.NewGuid()).Options);
+
+            wptx.Setup(x => x.Repository<AttachmentLink>())
+                         .Returns(new List<AttachmentLink>{
+                                  new AttachmentLink
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      IsActive = true,
+                                      FileId = attachmentFileId
+                                  }
+                         }.AsDbSetMock().Object);
+            wptx.Setup(x => x.Repository<AttachmentLink>().UpdateRange(It.IsAny<List<AttachmentLink>>()));
+
+            _mockUnitOfWorkGenericAuvenirWorkingPaperContext.Setup(x => x.GetContext(true)).Returns(wptx.Object);
+
+            _mockFileRepo.Setup(s => s.GetACTFilesByEngagementIdAsync(It.IsAny<Guid>()))
+                .ReturnsAsync(new List<File>
+                {
+                    new File
+                    {
+                        Id = attachmentFileId,
+                        FileName = "file1"
+                    }
+                });
+
+            _engagementTaxonomyRepo.Setup(s => s.GetDocumentSubphaseIdAsync(It.IsAny<Guid>()))
+                .ReturnsAsync(id);
+
+            _mockSendMessagesEventBus.Setup(e => e.SendMessagesAsync(It.IsAny<string>(), It.IsAny<string>(),
+                    It.IsAny<string>(), It.IsAny<ServiceBusMessageIntegrityCheck>()))
+            .Returns(Task.CompletedTask);
+
+            _mockMapper.Setup(x => x.Map<ViewModel.Responses.Todo.TodoWithOverviewViewModel>(It.IsAny<Todo>())).Returns(new TodoWithOverviewViewModel
+            {
+                id = Guid.NewGuid()
+            });
+
+            var request = new CreateListTodoRequest
+            {
+                currentUserID = currentUserID,
+                Payload = new CreateListTodoPayload
+                {
+                    EngagementStructureParentId = engagementStructureParentId,
+                    EngagementID = engagementId,
+                    TodoFilesRequest = new List<TodoFileRequest>(),
+                    WpTestType = TodoWpTestTypeEnum.OFFICEFILE_WORKINGPAPER.ToDescription(),
+                    TodoType = TodoTypeEnum.MWP.Value(),
+                    WpPhase = ""
+                }
+            };
+
+            // Act
+            var result = await instance.CreateListAsync(request);
+
+            // Assert
+            Assert.NotNull(result);
+        }
+
+        [Fact]
+        public async Task CreateListAsync_InvalidEngagementStructure_HasResultResponse()
+        {
+            // Arrange
+            var instance = CreateTodoServiceV2HasMockMapper();
+            var attachmentFileId = Guid.NewGuid();
+            var SPOFileId = Guid.NewGuid();
+            var RefFileId = Guid.NewGuid();
+            var currentUserID = Guid.NewGuid();
+            var engagementId = Guid.NewGuid();
+            var engagementStructureParentId = Guid.NewGuid();
+            var url1 = "https://url1/" + engagementId.ToString();
+
+            List<FileDetails> fileDetails = new List<FileDetails>
+                {
+                    new FileDetails
+                    {
+                        Id = SPOFileId.ToString(),
+                        Url = url1,
+                        Name = "file1",
+                    }
+                };
+
+            _spoService.Setup(s => s.ValidateFileInfosAsync(It.IsAny<Guid?>(), It.IsAny<string>(), It.IsAny<List<FileDetails>>(), It.IsAny<string>()))
+                       .ReturnsAsync(JsonConvert.SerializeObject(fileDetails));
+
+            _documentServiceMock.Setup(s => s.ValidateFilesAsync(It.IsAny<OfficeFilesRequest>()));
+
+            _mockAuvenirContext.Setup(x => x.Repository<Todo>().Update(It.IsAny<Todo>()));
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>().Update(It.IsAny<EngagementStructure>()));
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>().UpdateRange(It.IsAny<List<EngagementStructure>>()));
+            _mockAuvenirContext.Setup(x => x.Repository<File>().UpdateRange(It.IsAny<List<File>>()));
+            _mockAuvenirContext.Setup(x => x.Repository<TodoOfficeFile>().AddRangeAsync(It.IsAny<List<TodoOfficeFile>>(), It.IsAny<CancellationToken>()));
+            _mockAuvenirContext.Setup(x => x.Repository<File>().AddRangeAsync(It.IsAny<List<File>>(), It.IsAny<CancellationToken>()));
+            _mockAuvenirContext.Setup(x => x.Repository<AttachedFile>().AddRangeAsync(It.IsAny<List<AttachedFile>>(), It.IsAny<CancellationToken>()));
+
+            var bigEngagementStructures = new List<EngagementStructure>()
+            {
+                new EngagementStructure
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      ParentId = engagementStructureParentId,
+                                      Status = EngagementStructureStatus.Deleted.Value(),
+                                      IsActive = false
+                                  }
+            };
+
+            for (int i = 0; i <= AuvenirConstants.MaxWPsInSubphase; i++)
+            {
+                bigEngagementStructures.Add(new EngagementStructure
+                {
+                    Id = Guid.NewGuid(),
+                    EngagementId = engagementId,
+                    ParentId = engagementStructureParentId,
+                    IsActive = true
+                });
+            }
+
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>())
+                              .Returns(bigEngagementStructures.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<TodoOfficeFile>())
+                             .Returns(new List<TodoOfficeFile>{
+                                  new TodoOfficeFile
+                                  {
+                                      Id = engagementStructureParentId,
+                                      TodoId = engagementStructureParentId,
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<AttachedFile>())
+                             .Returns(new List<AttachedFile>{
+                                  new AttachedFile
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EntityId = engagementStructureParentId,
+                                      FileId = engagementStructureParentId
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<File>())
+                             .Returns(new List<File>{
+                                  new File
+                                  {
+                                      Id = engagementStructureParentId,
+                                      RefFileId = SPOFileId,
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<Todo>())
+                            .Returns(new List<Todo>{
+                                  new Todo
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      WpTestType = TodoWpTestTypeEnum.OFFICEFILE_WORKINGPAPER.ToDescription(),
+                                      CreatedUser = new User(),
+                                      TodoOfficeFile = new TodoOfficeFile()
+                                  }
+                            }.AsDbSetMock().Object);
+
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.GetContext(true)).Returns(_mockAuvenirContext.Object);
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.Repository<Engagement>())
+                                                .Returns(new List<Engagement>
+                                                {
+                                                    new Engagement
+                                                    {
+                                                        Id = engagementId,
+                                                        CarryForwardFrom = Guid.NewGuid()
+                                                    }
+                                                }.AsDbSetMock().Object);
+            var id = Guid.NewGuid();
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.Repository<EngagementStructure>())
+                                                .Returns(new List<EngagementStructure>
+                                                {
+                                                    new EngagementStructure
+                                                    {
+                                                        Id = id,
+                                                        EngagementId = engagementId,
+                                                        EngagementStructureBusinessProcess = new EngagementStructureBusinessProcess()
+                                                    }
+                                                }.AsDbSetMock().Object);
+
+            _mockPlanningContext.Setup(x => x.Repository<Auvenir.Common.DbContext.Planning.Models.SideNote>())
+                                                .Returns(new List<Auvenir.Common.DbContext.Planning.Models.SideNote>
+                                                {
+                                                    new Auvenir.Common.DbContext.Planning.Models.SideNote
+                                                    {
+                                                        EngagementId = engagementId,
+                                                        ObjectId = engagementStructureParentId
+                                                    }
+                                                }.AsDbSetMock().Object);
+
+            _mockPlanningContext.Setup(x => x.SaveChangesAsync());
+
+
+            var wptx = new Mock<AuvenirPlanningContext>(new DbContextOptionsBuilder<AuvenirPlanningContext>().UseInMemoryDatabase(databaseName: "AuvenirPlanningContext_UT_" + Guid.NewGuid()).Options);
+
+            wptx.Setup(x => x.Repository<AttachmentLink>())
+                         .Returns(new List<AttachmentLink>{
+                                  new AttachmentLink
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      IsActive = true,
+                                      FileId = attachmentFileId
+                                  }
+                         }.AsDbSetMock().Object);
+            wptx.Setup(x => x.Repository<AttachmentLink>().UpdateRange(It.IsAny<List<AttachmentLink>>()));
+
+            _mockUnitOfWorkGenericAuvenirWorkingPaperContext.Setup(x => x.GetContext(true)).Returns(wptx.Object);
+
+            _mockFileRepo.Setup(s => s.GetACTFilesByEngagementIdAsync(It.IsAny<Guid>()))
+                .ReturnsAsync(new List<File>
+                {
+                    new File
+                    {
+                        Id = attachmentFileId,
+                        FileName = "file1"
+                    }
+                });
+
+            _engagementTaxonomyRepo.Setup(s => s.GetDocumentSubphaseIdAsync(It.IsAny<Guid>()))
+                .ReturnsAsync(id);
+
+            _mockSendMessagesEventBus.Setup(e => e.SendMessagesAsync(It.IsAny<string>(), It.IsAny<string>(),
+                    It.IsAny<string>(), It.IsAny<ServiceBusMessageIntegrityCheck>()))
+            .Returns(Task.CompletedTask);
+
+            _mockMapper.Setup(x => x.Map<ViewModel.Responses.Todo.TodoWithOverviewViewModel>(It.IsAny<Todo>())).Returns(new TodoWithOverviewViewModel
+            {
+                id = Guid.NewGuid()
+            });
+
+            var request = new CreateListTodoRequest
+            {
+                currentUserID = currentUserID,
+                Payload = new CreateListTodoPayload
+                {
+                    EngagementStructureParentId = engagementStructureParentId,
+                    EngagementID = engagementId,
+                    TodoFilesRequest = new List<TodoFileRequest>
+                    {
+                        new TodoFileRequest
+                        {
+                            TodoOfficeFileRequest = new TodoOfficeFileRequest
+                            {
+                                SPOFileId = SPOFileId,
+                                FileName = "file1",
+                                Url = url1
+                            },
+                            Name = "Name1"
+                        }
+                    },
+                    WpTestType = TodoWpTestTypeEnum.OFFICEFILE_WORKINGPAPER.ToDescription(),
+                    TodoType = TodoTypeEnum.MWP.Value(),
+                    WpPhase = ""
+                }
+            };
+
+            // Act
+            var result = await instance.CreateListAsync(request);
+
+            // Assert
+            Assert.NotNull(result);
+        }
+
+
+        [Fact]
+        public async Task CreateCustomTodoListAsync()
+        {
+            // Arrange
+            var instance = CreateTodoServiceV2HasMockMapper();
+            var attachmentFileId = Guid.NewGuid();
+            var SPOFileId = Guid.NewGuid();
+            var RefFileId = Guid.NewGuid();
+            var currentUserID = Guid.NewGuid();
+            var engagementId = Guid.NewGuid();
+            var engagementStructureParentId = Guid.NewGuid();
+            var url1 = "https://url1/" + engagementId.ToString();
+
+            List<FileDetails> fileDetails = new List<FileDetails>
+                {
+                    new FileDetails
+                    {
+                        Id = SPOFileId.ToString(),
+                        Url = url1,
+                        Name = "file1",
+                    }
+                };
+
+            _spoService.Setup(s => s.ValidateFileInfosAsync(It.IsAny<Guid?>(), It.IsAny<string>(), It.IsAny<List<FileDetails>>(), It.IsAny<string>()))
+                       .ReturnsAsync(JsonConvert.SerializeObject(fileDetails));
+
+            _documentServiceMock.Setup(s => s.ValidateFilesAsync(It.IsAny<OfficeFilesRequest>()));
+
+            _mockAuvenirContext.Setup(x => x.Repository<Todo>().Update(It.IsAny<Todo>()));
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>().Update(It.IsAny<EngagementStructure>()));
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>().UpdateRange(It.IsAny<List<EngagementStructure>>()));
+            _mockAuvenirContext.Setup(x => x.Repository<File>().UpdateRange(It.IsAny<List<File>>()));
+            _mockAuvenirContext.Setup(x => x.Repository<TodoOfficeFile>().AddRangeAsync(It.IsAny<List<TodoOfficeFile>>(), It.IsAny<CancellationToken>()));
+            _mockAuvenirContext.Setup(x => x.Repository<File>().AddRangeAsync(It.IsAny<List<File>>(), It.IsAny<CancellationToken>()));
+            _mockAuvenirContext.Setup(x => x.Repository<AttachedFile>().AddRangeAsync(It.IsAny<List<AttachedFile>>(), It.IsAny<CancellationToken>()));
+
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>())
+                              .Returns(new List<EngagementStructure>{
+                                  new EngagementStructure
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      ParentId = engagementStructureParentId,
+                                      Status = EngagementStructureStatus.Deleted.Value(),
+                                      IsActive = false
+                                  },
+                              }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<TodoOfficeFile>())
+                             .Returns(new List<TodoOfficeFile>{
+                                  new TodoOfficeFile
+                                  {
+                                      Id = engagementStructureParentId,
+                                      TodoId = engagementStructureParentId,
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<AttachedFile>())
+                             .Returns(new List<AttachedFile>{
+                                  new AttachedFile
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EntityId = engagementStructureParentId,
+                                      FileId = engagementStructureParentId
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<File>())
+                             .Returns(new List<File>{
+                                  new File
+                                  {
+                                      Id = engagementStructureParentId,
+                                      RefFileId = SPOFileId,
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<Todo>())
+                            .Returns(new List<Todo>{
+                                  new Todo
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      WpTestType = TodoWpTestTypeEnum.OFFICEFILE_WORKINGPAPER.ToDescription(),
+                                      CreatedUser = new User(),
+                                      TodoOfficeFile = new TodoOfficeFile(),
+                                      Name = "Name1"
+                                  }
+                            }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<User>())
+                            .Returns(new List<User>{
+                                  new User
+                                  {
+                                      Id = currentUserID,
+                                  }
+                            }.AsDbSetMock().Object);
+
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.GetContext(true)).Returns(_mockAuvenirContext.Object);
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.Repository<Engagement>())
+                                                .Returns(new List<Engagement>
+                                                {
+                                                    new Engagement
+                                                    {
+                                                        Id = engagementId,
+                                                        CarryForwardFrom = Guid.NewGuid()
+                                                    }
+                                                }.AsDbSetMock().Object);
+            var id = Guid.NewGuid();
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.Repository<EngagementStructure>())
+                                                .Returns(new List<EngagementStructure>
+                                                {
+                                                    new EngagementStructure
+                                                    {
+                                                        Id = id,
+                                                        EngagementId = engagementId,
+                                                        EngagementStructureBusinessProcess = new EngagementStructureBusinessProcess()
+                                                    }
+                                                }.AsDbSetMock().Object);
+
+            _mockPlanningContext.Setup(x => x.Repository<Auvenir.Common.DbContext.Planning.Models.SideNote>())
+                                                .Returns(new List<Auvenir.Common.DbContext.Planning.Models.SideNote>
+                                                {
+                                                    new Auvenir.Common.DbContext.Planning.Models.SideNote
+                                                    {
+                                                        EngagementId = engagementId,
+                                                        ObjectId = engagementStructureParentId
+                                                    }
+                                                }.AsDbSetMock().Object);
+
+            _mockPlanningContext.Setup(x => x.SaveChangesAsync());
+
+
+            var wptx = new Mock<AuvenirPlanningContext>(new DbContextOptionsBuilder<AuvenirPlanningContext>().UseInMemoryDatabase(databaseName: "AuvenirPlanningContext_UT_" + Guid.NewGuid()).Options);
+
+            wptx.Setup(x => x.Repository<AttachmentLink>())
+                         .Returns(new List<AttachmentLink>{
+                                  new AttachmentLink
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      IsActive = true,
+                                      FileId = attachmentFileId
+                                  }
+                         }.AsDbSetMock().Object);
+            wptx.Setup(x => x.Repository<AttachmentLink>().UpdateRange(It.IsAny<List<AttachmentLink>>()));
+
+            _mockUnitOfWorkGenericAuvenirWorkingPaperContext.Setup(x => x.GetContext(true)).Returns(wptx.Object);
+
+            _mockFileRepo.Setup(s => s.GetACTFilesByEngagementIdAsync(It.IsAny<Guid>()))
+                .ReturnsAsync(new List<File>
+                {
+                    new File
+                    {
+                        Id = attachmentFileId,
+                        FileName = "file1"
+                    }
+                });
+
+            _engagementTaxonomyRepo.Setup(s => s.GetDocumentSubphaseIdAsync(It.IsAny<Guid>()))
+                .ReturnsAsync(id);
+
+            _mockSendMessagesEventBus.Setup(e => e.SendMessagesAsync(It.IsAny<string>(), It.IsAny<string>(),
+                    It.IsAny<string>(), It.IsAny<ServiceBusMessageIntegrityCheck>()))
+            .Returns(Task.CompletedTask);
+
+            _mockMapper.Setup(x => x.Map<ViewModel.Responses.Todo.TodoWithOverviewViewModel>(It.IsAny<Todo>())).Returns(new TodoWithOverviewViewModel
+            {
+                id = Guid.NewGuid()
+            });
+
+            var request = new CreateListCustomTodoRequest
+            {
+                currentUserID = currentUserID,
+                payload = new CreateListCustomTodoRequestPayload
+                {
+                    engagementStructureParentId = engagementStructureParentId,
+                    EngagementID = engagementId,
+                    todos = new CreateRequestTodoPayload[]
+                    {
+                        new CreateRequestTodoPayload
+                        {
+                            TodoOfficeFileRequest = new TodoOfficeFileRequest
+                            {
+                                SPOFileId = SPOFileId,
+                                FileName = "file1",
+                                Url = url1
+                            },
+                            name = "Name1"
+                        }
+                    },
+                    wpTestType = TodoWpTestTypeEnum.BAREBONES_NA.Value(),
+                    todoType = TodoTypeEnum.MWP.Value(),
+                    wpPhase = ""
+                }
+            };
+
+            // Act
+            var result = await instance.CreateCustomTodoListAsync(request);
+
+            // Assert
+            Assert.NotNull(result);
+        }
+
+        [Fact]
+        public async Task CreateCustomTodoListAsync_NoError_ListCustomTodo()
+        {
+            // Arrange
+            var instance = CreateTodoServiceV2HasMockMapper();
+            var attachmentFileId = Guid.NewGuid();
+            var SPOFileId = Guid.NewGuid();
+            var RefFileId = Guid.NewGuid();
+            var currentUserID = Guid.NewGuid();
+            var engagementId = Guid.NewGuid();
+            var engagementStructureParentId = Guid.NewGuid();
+            var url1 = "https://url1/" + engagementId.ToString();
+
+            List<FileDetails> fileDetails = new List<FileDetails>
+                {
+                    new FileDetails
+                    {
+                        Id = SPOFileId.ToString(),
+                        Url = url1,
+                        Name = "file1",
+                    }
+                };
+
+            _spoService.Setup(s => s.ValidateFileInfosAsync(It.IsAny<Guid?>(), It.IsAny<string>(), It.IsAny<List<FileDetails>>(), It.IsAny<string>()))
+                       .ReturnsAsync(JsonConvert.SerializeObject(fileDetails));
+
+            _documentServiceMock.Setup(s => s.ValidateFilesAsync(It.IsAny<OfficeFilesRequest>()));
+
+            _mockAuvenirContext.Setup(x => x.Repository<Todo>().Update(It.IsAny<Todo>()));
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>().Update(It.IsAny<EngagementStructure>()));
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>().UpdateRange(It.IsAny<List<EngagementStructure>>()));
+            _mockAuvenirContext.Setup(x => x.Repository<File>().UpdateRange(It.IsAny<List<File>>()));
+            _mockAuvenirContext.Setup(x => x.Repository<TodoOfficeFile>().AddRangeAsync(It.IsAny<List<TodoOfficeFile>>(), It.IsAny<CancellationToken>()));
+            _mockAuvenirContext.Setup(x => x.Repository<File>().AddRangeAsync(It.IsAny<List<File>>(), It.IsAny<CancellationToken>()));
+            _mockAuvenirContext.Setup(x => x.Repository<AttachedFile>().AddRangeAsync(It.IsAny<List<AttachedFile>>(), It.IsAny<CancellationToken>()));
+            var bigEngagementStructures = new List<EngagementStructure>()
+            {
+                new EngagementStructure
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      ParentId = engagementStructureParentId,
+                                      Status = EngagementStructureStatus.Deleted.Value(),
+                                      IsActive = false
+                                  }
+            };
+
+            for (int i = 0; i <= AuvenirConstants.MaxWPsInSubphase; i++)
+            {
+                bigEngagementStructures.Add(new EngagementStructure
+                {
+                    Id = Guid.NewGuid(),
+                    EngagementId = engagementId,
+                    ParentId = engagementStructureParentId,
+                    IsActive = true
+                });
+            }
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>())
+                              .Returns(bigEngagementStructures.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<TodoOfficeFile>())
+                             .Returns(new List<TodoOfficeFile>{
+                                  new TodoOfficeFile
+                                  {
+                                      Id = engagementStructureParentId,
+                                      TodoId = engagementStructureParentId,
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<AttachedFile>())
+                             .Returns(new List<AttachedFile>{
+                                  new AttachedFile
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EntityId = engagementStructureParentId,
+                                      FileId = engagementStructureParentId
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<File>())
+                             .Returns(new List<File>{
+                                  new File
+                                  {
+                                      Id = engagementStructureParentId,
+                                      RefFileId = SPOFileId,
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<Todo>())
+                            .Returns(new List<Todo>{
+                                  new Todo
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      WpTestType = TodoWpTestTypeEnum.OFFICEFILE_WORKINGPAPER.ToDescription(),
+                                      CreatedUser = new User(),
+                                      TodoOfficeFile = new TodoOfficeFile(),
+                                      Name = "Name1"
+                                  }
+                            }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<User>())
+                            .Returns(new List<User>{
+                                  new User
+                                  {
+                                      Id = currentUserID,
+                                  }
+                            }.AsDbSetMock().Object);
+
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.GetContext(true)).Returns(_mockAuvenirContext.Object);
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.Repository<Engagement>())
+                                                .Returns(new List<Engagement>
+                                                {
+                                                    new Engagement
+                                                    {
+                                                        Id = engagementId
+                                                    }
+                                                }.AsDbSetMock().Object);
+            var id = Guid.NewGuid();
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.Repository<EngagementStructure>())
+                                                .Returns(new List<EngagementStructure>
+                                                {
+                                                    new EngagementStructure
+                                                    {
+                                                        Id = id,
+                                                        EngagementId = engagementId,
+                                                        EngagementStructureBusinessProcess = new EngagementStructureBusinessProcess()
+                                                    }
+                                                }.AsDbSetMock().Object);
+
+            _mockPlanningContext.Setup(x => x.Repository<Auvenir.Common.DbContext.Planning.Models.SideNote>())
+                                                .Returns(new List<Auvenir.Common.DbContext.Planning.Models.SideNote>
+                                                {
+                                                    new Auvenir.Common.DbContext.Planning.Models.SideNote
+                                                    {
+                                                        EngagementId = engagementId,
+                                                        ObjectId = engagementStructureParentId
+                                                    }
+                                                }.AsDbSetMock().Object);
+
+            _mockPlanningContext.Setup(x => x.SaveChangesAsync());
+
+
+            var wptx = new Mock<AuvenirPlanningContext>(new DbContextOptionsBuilder<AuvenirPlanningContext>().UseInMemoryDatabase(databaseName: "AuvenirPlanningContext_UT_" + Guid.NewGuid()).Options);
+
+            wptx.Setup(x => x.Repository<AttachmentLink>())
+                         .Returns(new List<AttachmentLink>{
+                                  new AttachmentLink
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      IsActive = true,
+                                      FileId = attachmentFileId
+                                  }
+                         }.AsDbSetMock().Object);
+            wptx.Setup(x => x.Repository<AttachmentLink>().UpdateRange(It.IsAny<List<AttachmentLink>>()));
+
+            _mockUnitOfWorkGenericAuvenirWorkingPaperContext.Setup(x => x.GetContext(true)).Returns(wptx.Object);
+
+            _mockFileRepo.Setup(s => s.GetACTFilesByEngagementIdAsync(It.IsAny<Guid>()))
+                .ReturnsAsync(new List<File>
+                {
+                    new File
+                    {
+                        Id = attachmentFileId,
+                        FileName = "file1"
+                    }
+                });
+
+            _engagementTaxonomyRepo.Setup(s => s.GetDocumentSubphaseIdAsync(It.IsAny<Guid>()))
+                .ReturnsAsync(id);
+
+            _mockSendMessagesEventBus.Setup(e => e.SendMessagesAsync(It.IsAny<string>(), It.IsAny<string>(),
+                    It.IsAny<string>(), It.IsAny<ServiceBusMessageIntegrityCheck>()))
+            .Returns(Task.CompletedTask);
+
+            _mockMapper.Setup(x => x.Map<ViewModel.Responses.Todo.TodoWithOverviewViewModel>(It.IsAny<Todo>())).Returns(new TodoWithOverviewViewModel
+            {
+                id = Guid.NewGuid()
+            });
+
+            var request = new CreateListCustomTodoRequest
+            {
+                currentUserID = currentUserID,
+                payload = new CreateListCustomTodoRequestPayload
+                {
+                    engagementStructureParentId = engagementStructureParentId,
+                    EngagementID = engagementId,
+                    todos = new CreateRequestTodoPayload[]
+                    {
+                        new CreateRequestTodoPayload
+                        {
+                            TodoOfficeFileRequest = new TodoOfficeFileRequest
+                            {
+                                SPOFileId = SPOFileId,
+                                FileName = "file1",
+                                Url = url1
+                            },
+                            name = "Name1"
+                        }
+                    },
+                    wpTestType = TodoWpTestTypeEnum.BAREBONES_NA.Value(),
+                    todoType = TodoTypeEnum.MWP.Value(),
+                    wpPhase = ""
+                }
+            };
+
+            // Act
+            var result = await instance.CreateCustomTodoListAsync(request);
+
+            // Assert
+            Assert.NotNull(result);
+        }
+        [Fact]
+        public async Task CreateCustomTodoListAsync_ReachMaxWPsInSubphase_HasResult()
+        {
+            // Arrange
+            var instance = CreateTodoServiceV2HasMockMapper();
+            var attachmentFileId = Guid.NewGuid();
+            var SPOFileId = Guid.NewGuid();
+            var RefFileId = Guid.NewGuid();
+            var currentUserID = Guid.NewGuid();
+            var engagementId = Guid.NewGuid();
+            var engagementStructureParentId = Guid.NewGuid();
+            var url1 = "https://url1/" + engagementId.ToString();
+
+            List<FileDetails> fileDetails = new List<FileDetails>
+                {
+                    new FileDetails
+                    {
+                        Id = SPOFileId.ToString(),
+                        Url = url1,
+                        Name = "file1",
+                    }
+                };
+
+            _spoService.Setup(s => s.ValidateFileInfosAsync(It.IsAny<Guid?>(), It.IsAny<string>(), It.IsAny<List<FileDetails>>(), It.IsAny<string>()))
+                       .ReturnsAsync(JsonConvert.SerializeObject(fileDetails));
+
+            _documentServiceMock.Setup(s => s.ValidateFilesAsync(It.IsAny<OfficeFilesRequest>()));
+
+            _mockAuvenirContext.Setup(x => x.Repository<Todo>().Update(It.IsAny<Todo>()));
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>().Update(It.IsAny<EngagementStructure>()));
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>().UpdateRange(It.IsAny<List<EngagementStructure>>()));
+            _mockAuvenirContext.Setup(x => x.Repository<File>().UpdateRange(It.IsAny<List<File>>()));
+            _mockAuvenirContext.Setup(x => x.Repository<TodoOfficeFile>().AddRangeAsync(It.IsAny<List<TodoOfficeFile>>(), It.IsAny<CancellationToken>()));
+            _mockAuvenirContext.Setup(x => x.Repository<File>().AddRangeAsync(It.IsAny<List<File>>(), It.IsAny<CancellationToken>()));
+            _mockAuvenirContext.Setup(x => x.Repository<AttachedFile>().AddRangeAsync(It.IsAny<List<AttachedFile>>(), It.IsAny<CancellationToken>()));
+            var bigEngagementStructures = new List<EngagementStructure>()
+            {
+                new EngagementStructure
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      ParentId = engagementStructureParentId,
+                                      Status = EngagementStructureStatus.Deleted.Value(),
+                                      IsActive = false
+                                  }
+            };
+
+            for (int i = 0; i <= AuvenirConstants.MaxWPsInSubphase; i++)
+            {
+                bigEngagementStructures.Add(new EngagementStructure
+                {
+                    Id = Guid.NewGuid(),
+                    EngagementId = engagementId,
+                    ParentId = engagementStructureParentId,
+                    IsActive = true
+                });
+            }
+            _mockAuvenirContext.Setup(x => x.Repository<EngagementStructure>())
+                              .Returns(bigEngagementStructures.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<TodoOfficeFile>())
+                             .Returns(new List<TodoOfficeFile>{
+                                  new TodoOfficeFile
+                                  {
+                                      Id = engagementStructureParentId,
+                                      TodoId = engagementStructureParentId,
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<AttachedFile>())
+                             .Returns(new List<AttachedFile>{
+                                  new AttachedFile
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EntityId = engagementStructureParentId,
+                                      FileId = engagementStructureParentId
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<File>())
+                             .Returns(new List<File>{
+                                  new File
+                                  {
+                                      Id = engagementStructureParentId,
+                                      RefFileId = SPOFileId,
+                                  }
+                             }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<Todo>())
+                            .Returns(new List<Todo>{
+                                  new Todo
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      WpTestType = TodoWpTestTypeEnum.OFFICEFILE_WORKINGPAPER.ToDescription(),
+                                      CreatedUser = new User(),
+                                      TodoOfficeFile = new TodoOfficeFile(),
+                                      Name = "Name1"
+                                  }
+                            }.AsDbSetMock().Object);
+
+            _mockAuvenirContext.Setup(x => x.Repository<User>())
+                            .Returns(new List<User>{
+                                  new User
+                                  {
+                                      Id = currentUserID,
+                                  }
+                            }.AsDbSetMock().Object);
+
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.GetContext(true)).Returns(_mockAuvenirContext.Object);
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.Repository<Engagement>())
+                                                .Returns(new List<Engagement>
+                                                {
+                                                    new Engagement
+                                                    {
+                                                        Id = engagementId
+                                                    }
+                                                }.AsDbSetMock().Object);
+            var id = Guid.NewGuid();
+            _mockUnitOfWorkGenericAuvenirContext.Setup(x => x.Repository<EngagementStructure>())
+                                                .Returns(new List<EngagementStructure>
+                                                {
+                                                    new EngagementStructure
+                                                    {
+                                                        Id = id,
+                                                        EngagementId = engagementId,
+                                                        EngagementStructureBusinessProcess = new EngagementStructureBusinessProcess()
+                                                    }
+                                                }.AsDbSetMock().Object);
+
+            _mockPlanningContext.Setup(x => x.Repository<Auvenir.Common.DbContext.Planning.Models.SideNote>())
+                                                .Returns(new List<Auvenir.Common.DbContext.Planning.Models.SideNote>
+                                                {
+                                                    new Auvenir.Common.DbContext.Planning.Models.SideNote
+                                                    {
+                                                        EngagementId = engagementId,
+                                                        ObjectId = engagementStructureParentId
+                                                    }
+                                                }.AsDbSetMock().Object);
+
+            _mockPlanningContext.Setup(x => x.SaveChangesAsync());
+
+
+            var wptx = new Mock<AuvenirPlanningContext>(new DbContextOptionsBuilder<AuvenirPlanningContext>().UseInMemoryDatabase(databaseName: "AuvenirPlanningContext_UT_" + Guid.NewGuid()).Options);
+
+            wptx.Setup(x => x.Repository<AttachmentLink>())
+                         .Returns(new List<AttachmentLink>{
+                                  new AttachmentLink
+                                  {
+                                      Id = engagementStructureParentId,
+                                      EngagementId = engagementId,
+                                      IsActive = true,
+                                      FileId = attachmentFileId
+                                  }
+                         }.AsDbSetMock().Object);
+            wptx.Setup(x => x.Repository<AttachmentLink>().UpdateRange(It.IsAny<List<AttachmentLink>>()));
+
+            _mockUnitOfWorkGenericAuvenirWorkingPaperContext.Setup(x => x.GetContext(true)).Returns(wptx.Object);
+
+            _mockFileRepo.Setup(s => s.GetACTFilesByEngagementIdAsync(It.IsAny<Guid>()))
+                .ReturnsAsync(new List<File>
+                {
+                    new File
+                    {
+                        Id = attachmentFileId,
+                        FileName = "file1"
+                    }
+                });
+
+            _engagementTaxonomyRepo.Setup(s => s.GetDocumentSubphaseIdAsync(It.IsAny<Guid>()))
+                .ReturnsAsync(id);
+
+            _mockSendMessagesEventBus.Setup(e => e.SendMessagesAsync(It.IsAny<string>(), It.IsAny<string>(),
+                    It.IsAny<string>(), It.IsAny<ServiceBusMessageIntegrityCheck>()))
+            .Returns(Task.CompletedTask);
+
+            _mockMapper.Setup(x => x.Map<ViewModel.Responses.Todo.TodoWithOverviewViewModel>(It.IsAny<Todo>())).Returns(new TodoWithOverviewViewModel
+            {
+                id = Guid.NewGuid()
+            });
+
+            var request = new CreateListCustomTodoRequest
+            {
+                currentUserID = currentUserID,
+                payload = new CreateListCustomTodoRequestPayload
+                {
+                    engagementStructureParentId = engagementStructureParentId,
+                    EngagementID = engagementId,
+                    todos = new CreateRequestTodoPayload[]
+                    {
+                        new CreateRequestTodoPayload
+                        {
+                            TodoOfficeFileRequest = new TodoOfficeFileRequest
+                            {
+                                SPOFileId = SPOFileId,
+                                FileName = "file",
+                                Url = url1
+                            },
+                            name = "Name1"
+                        }
+                    },
+                    wpTestType = TodoWpTestTypeEnum.BAREBONES_NA.Value(),
+                    todoType = TodoTypeEnum.MWP.Value(),
+                    wpPhase = ""
+                }
+            };
+
+            // Act
+            var result = await instance.CreateCustomTodoListAsync(request);
+
+            // Assert
+            Assert.NotNull(result);
+        }
